@@ -1,15 +1,10 @@
 import React from 'react';
 
 const Login = () => {
-  const handleLogin = async () => {
-    try {
-      console.log('🔐 Redirecting to backend login...');
-      // 👇 USA SEMPRE IL BACKEND PER IL LOGIN
-      window.location.href = 'http://localhost:8080/auth/login';
-    } catch (error) {
-      console.error('❌ Login failed:', error);
-      alert('Login failed: ' + error.message);
-    }
+  const handleLogin = () => {
+    console.log('🔐 Redirecting to backend login...');
+    // 👇 CORREGGI L'URL - usa il path corretto per OIDC
+    window.location.href = 'http://localhost:8080/auth/oidc/login';
   };
 
   return (
@@ -42,24 +37,8 @@ const Login = () => {
 
       <div style={{ marginTop: '20px', textAlign: 'center' }}>
         <h3>Debug Info:</h3>
-        <p>Using backend authentication</p>
-        <button 
-          onClick={() => {
-            // Test diretto
-            window.location.href = 'http://localhost:8080/auth/login';
-          }}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: '#28a745',
-            color: 'white',
-            border: 'none',
-            borderRadius: '5px',
-            cursor: 'pointer',
-            margin: '10px'
-          }}
-        >
-          Test Direct Backend Login
-        </button>
+        <p>Using OIDC authentication endpoint</p>
+        <p>Endpoint: <code>/auth/oidc/login</code></p>
       </div>
     </div>
   );

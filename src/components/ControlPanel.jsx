@@ -1,24 +1,28 @@
-// components/ControlPanel.jsx
 import React from 'react';
-import { useAuth } from 'react-oidc-context';
 
 const ControlPanel = ({ 
   user, 
   roomId, 
   isConnected, 
   onRoomUpdate, 
-  onDisconnect 
+  onDisconnect,
+  token 
 }) => {
-  const { logout } = useAuth();
-
   const handleLogout = () => {
-    logout();
+    // Logout semplice - rimuovi token e ricarica
+    localStorage.removeItem('token');
+    window.location.href = '/login';
+  };
+
+  const handleReconnect = () => {
+    window.location.reload();
   };
 
   return (
     <div className="control-panel">
       <div className="user-section">
-        <span><strong>User:</strong> {user.username} (ID: {user.userId})</span>
+        <span><strong>User:</strong> {user?.username || 'Loading...'}</span>
+        <span><strong>Token:</strong> {token ? `${token.substring(0, 10)}...` : 'None'}</span>
       </div>
       
       <div className="room-section">
@@ -27,7 +31,7 @@ const ControlPanel = ({
           <input
             type="number"
             value={roomId}
-            onChange={(e) => onRoomUpdate(parseInt(e.target.value))}
+            onChange={(e) => onRoomUpdate(parseInt(e.target.value) || 1)}
             min="1"
             disabled={isConnected}
           />
@@ -40,7 +44,9 @@ const ControlPanel = ({
             Disconnect
           </button>
         ) : (
-          <span className="connected-status">Connected automatically</span>
+          <button onClick={handleReconnect} className="btn-reconnect">
+            Reconnect
+          </button>
         )}
         
         <button onClick={handleLogout} className="btn-logout">

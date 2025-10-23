@@ -12,17 +12,10 @@ export const useWebSocket = (url, onMessage, onError, getToken) => {
         return;
       }
 
-      let finalUrl = url;
       const token = getToken?.();
+      const finalUrl = token ? `${url}?token=${encodeURIComponent(token)}` : url;
       
-      if (token) {
-        // 👇 AGGIUNGI IL TOKEN COME QUERY PARAMETER
-        finalUrl = `${url}?token=${encodeURIComponent(token)}`;
-        console.log('🔐 WebSocket connecting with JWT token as query parameter');
-      } else {
-        console.warn('⚠️ No token available for WebSocket connection');
-      }
-
+      console.log('🔌 Connecting to:', finalUrl);
       ws.current = new WebSocket(finalUrl);
       
       ws.current.onopen = () => {
@@ -37,48 +30,36 @@ export const useWebSocket = (url, onMessage, onError, getToken) => {
           onMessage(data);
         } catch (error) {
           console.error('Error parsing message:', error);
-          onError?.('Invalid message format');
         }
       };
 
       ws.current.onclose = (event) => {
         setIsConnected(false);
-        console.log('🔴 WebSocket disconnected', {
-          code: event.code,
-          reason: event.reason,
-          wasClean: event.wasClean
-        });
+        console.log('🔴 WebSocket disconnected:', event.reason);
         
-        // Auto-reconnect solo se non è un errore di autenticazione
-        if (event.code !== 1008 && event.code !== 4003) { // 1008 = Policy Violation, 4003 = Custom auth error
-          reconnectTimeout.current = setTimeout(() => {
-            console.log('🔄 Attempting WebSocket reconnection...');
-            connect();
-          }, 3000);
+        // Auto-reconnect dopo 2 secondi
+        if (event.code !== 1008) { // Non riconnettere per errori di policy
+          reconnectTimeout.current = setTimeout(connect, 2000);
         }
       };
 
       ws.current.onerror = (error) => {
-        const errorMsg = 'WebSocket connection error';
-        setLastError(errorMsg);
-        onError?.(errorMsg);
         console.error('WebSocket error:', error);
+        setLastError('Connection error');
       };
 
     } catch (error) {
-      setLastError('Failed to establish connection');
-      onError?.('Connection failed');
+      console.error('WebSocket connection failed:', error);
+      setLastError('Connection failed');
     }
-  }, [url, onMessage, onError, getToken]);
+  }, [url, onMessage, getToken]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeout.current) {
       clearTimeout(reconnectTimeout.current);
     }
-    
     if (ws.current) {
-      ws.current.close(1000, 'User disconnected');
-      ws.current = null;
+      ws.current.close(1000, 'Manual disconnect');
     }
     setIsConnected(false);
   }, []);
@@ -91,11 +72,11 @@ export const useWebSocket = (url, onMessage, onError, getToken) => {
     return false;
   }, []);
 
+  // Auto-connect on mount
   useEffect(() => {
-    return () => {
-      disconnect();
-    };
-  }, [disconnect]);
+    connect();
+    return disconnect;
+  }, [connect, disconnect]);
 
   return {
     isConnected,

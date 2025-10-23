@@ -5,39 +5,31 @@ import ControlPanel from './ControlPanel';
 import ConnectionStatus from './ConnectionStatus';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
+import LoadingSpinner from './LoadingSpinner';
 import '../styles/ChatApp.css';
 
 const ChatApp = () => {
   const [token, setToken] = useState(null);
-  const [connectionAttempted, setConnectionAttempted] = useState(false);
-  
-  // 👇 DEBUG ESTESO PER IL TOKEN
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Estrai il token dall'URL
   useEffect(() => {
     console.log('🔍 ChatApp mounted - Checking for token...');
-    console.log('📍 Current URL:', window.location.href);
-    console.log('🔍 URL Search:', window.location.search);
     
     const urlParams = new URLSearchParams(window.location.search);
     const urlToken = urlParams.get('token');
     
-    console.log('🔑 Extracted token from URL:', urlToken ? 'YES' : 'NO');
-    
     if (urlToken) {
-      console.log('✅ Token received:', urlToken.substring(0, 20) + '...');
+      console.log('✅ Token received from URL');
       setToken(urlToken);
-      
       // Rimuovi il token dall'URL per sicurezza
       window.history.replaceState({}, document.title, window.location.pathname);
-      console.log('🔄 URL cleaned, token stored in state');
     } else {
       console.log('❌ No token found in URL');
     }
+    
+    setIsLoading(false);
   }, []);
-
-  // 👇 DEBUG QUANDO TOKEN CAMBIA
-  useEffect(() => {
-    console.log('🔄 Token state changed:', token ? 'HAS TOKEN' : 'NO TOKEN');
-  }, [token]);
 
   const {
     messages,
@@ -55,10 +47,7 @@ const ChatApp = () => {
     console.error('WebSocket error:', error);
   }, []);
 
-  const getToken = useCallback(() => {
-    console.log('🔑 getToken called, returning:', token ? token.substring(0, 10) + '...' : 'null');
-    return token;
-  }, [token]);
+  const getToken = useCallback(() => token, [token]);
 
   const websocketUrl = `ws://localhost:8080/ws/chat/${roomId}`;
   
@@ -70,61 +59,51 @@ const ChatApp = () => {
     sendMessage
   } = useWebSocket(websocketUrl, handleWebSocketMessage, handleWebSocketError, getToken);
 
-  // 👇 DEBUG CONNESSIONE
+  // Gestione connessione WebSocket
   useEffect(() => {
-    console.log('🔌 Connection state - Token:', !!token, 'Attempted:', connectionAttempted, 'Connected:', isConnected);
-    
-    if (token && !connectionAttempted) {
-      console.log('🚀 Attempting WebSocket connection with token...');
-      setConnectionAttempted(true);
+    if (token && !isLoading) {
+      console.log('🚀 Attempting WebSocket connection...');
       connect();
     }
-  }, [token, connect, connectionAttempted, isConnected]);
+  }, [token, isLoading, connect]);
 
   const handleDisconnect = useCallback(() => {
     console.log('🔌 Manual disconnect');
     disconnect();
-    setConnectionAttempted(false);
   }, [disconnect]);
 
   const handleSendMessage = useCallback((content) => {
-    console.log('💬 Sending message:', content.substring(0, 30) + '...');
     return sendChatMessage(content, { sendMessage, isConnected: () => isConnected });
   }, [sendChatMessage, sendMessage, isConnected]);
 
   const handleTypingStart = useCallback(() => {
-    console.log('⌨️ Starting typing indicator');
     sendTypingIndicator(true, { sendMessage, isConnected: () => isConnected });
   }, [sendTypingIndicator, sendMessage, isConnected]);
 
   const handleTypingStop = useCallback(() => {
-    console.log('🛑 Stopping typing indicator');
     sendTypingIndicator(false, { sendMessage, isConnected: () => isConnected });
   }, [sendTypingIndicator, sendMessage, isConnected]);
 
-  // 👇 SE NON C'È TOKEN, MOSTRA MESSAGGIO CON PULSANTE CORRETTO
+  // Mostra loading durante l'inizializzazione
+  if (isLoading) {
+    return <LoadingSpinner message="Initializing chat..." />;
+  }
+
+  // Se non c'è token, mostra schermata di login
   if (!token) {
     return (
       <div className="container">
         <div className="auth-required">
           <h2>🔐 Authentication Required</h2>
-          <p>No authentication token found.</p>
           <p>Please log in to access the chat.</p>
           <button 
             onClick={() => {
-              console.log('🔐 Redirecting to backend login...');
               window.location.href = 'http://localhost:8080/auth/login';
             }}
             className="btn-primary"
           >
             Login with Keycloak
           </button>
-          
-          <div style={{ marginTop: '20px', fontSize: '14px', color: '#666' }}>
-            <p>Debug Info:</p>
-            <p>Current URL: {window.location.href}</p>
-            <p>Token in state: {token ? 'YES' : 'NO'}</p>
-          </div>
         </div>
       </div>
     );
@@ -134,10 +113,10 @@ const ChatApp = () => {
     <div className="container">
       <header className="chat-header">
         <h1>⚡ PUNK CHAT ⚡</h1>
-        <div className="user-info">
-          <span>Authenticated! Token: {token.substring(0, 15)}...</span>
-          <span>WebSocket: {isConnected ? '🟢 CONNECTED' : '🔴 DISCONNECTED'}</span>
-        </div>
+        <ConnectionStatus 
+          isConnected={isConnected} 
+          lastError={lastError} 
+        />
       </header>
       
       <ControlPanel
@@ -146,11 +125,7 @@ const ChatApp = () => {
         isConnected={isConnected}
         onRoomUpdate={updateRoomId}
         onDisconnect={handleDisconnect}
-      />
-      
-      <ConnectionStatus 
-        isConnected={isConnected} 
-        lastError={lastError} 
+        token={token}
       />
       
       <MessageList 
