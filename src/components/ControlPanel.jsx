@@ -1,74 +1,50 @@
+// components/ControlPanel.jsx
 import React from 'react';
+import { useAuth } from 'react-oidc-context';
 
 const ControlPanel = ({ 
   user, 
   roomId, 
   isConnected, 
-  onUserUpdate, 
   onRoomUpdate, 
-  onConnect, 
   onDisconnect 
 }) => {
-  const handleUserChange = (field, value) => {
-    onUserUpdate({ [field]: value });
-  };
+  const { logout } = useAuth();
 
-  const handleRoomChange = (value) => {
-    onRoomUpdate(Number(value));
+  const handleLogout = () => {
+    logout();
   };
 
   return (
     <div className="control-panel">
-      <div className="input-group">
-        <label htmlFor="usernameInput">USERNAME</label>
-        <input
-          type="text"
-          id="usernameInput"
-          placeholder="Enter username"
-          value={user.username}
-          onChange={(e) => handleUserChange('username', e.target.value)}
-          disabled={isConnected}
-        />
+      <div className="user-section">
+        <span><strong>User:</strong> {user.username} (ID: {user.userId})</span>
       </div>
       
-      <div className="input-group">
-        <label htmlFor="userIdInput">USER ID</label>
-        <input
-          type="number"
-          id="userIdInput"
-          placeholder="User ID"
-          value={user.userId}
-          onChange={(e) => handleUserChange('userId', Number(e.target.value))}
-          disabled={isConnected}
-        />
+      <div className="room-section">
+        <label>
+          Room ID:
+          <input
+            type="number"
+            value={roomId}
+            onChange={(e) => onRoomUpdate(parseInt(e.target.value))}
+            min="1"
+            disabled={isConnected}
+          />
+        </label>
       </div>
       
-      <div className="input-group">
-        <label htmlFor="roomIdInput">ROOM ID</label>
-        <input
-          type="number"
-          id="roomIdInput"
-          placeholder="Room ID"
-          value={roomId}
-          onChange={(e) => handleRoomChange(e.target.value)}
-          disabled={isConnected}
-        />
-      </div>
-      
-      <div className="button-group">
-        <button 
-          id="connectBtn" 
-          onClick={onConnect}
-          disabled={isConnected || !user.username || !user.userId}
-        >
-          CONNECT
-        </button>
-        <button 
-          id="disconnectBtn" 
-          onClick={onDisconnect}
-          disabled={!isConnected}
-        >
-          DISCONNECT
+      <div className="actions-section">
+        {isConnected ? (
+          <button onClick={onDisconnect} className="btn-disconnect">
+            Disconnect
+          </button>
+        ) : (
+          <span className="connected-status">Connected automatically</span>
+        )}
+        
+        <button onClick={handleLogout} className="btn-logout">
+          Logout
         </button>
       </div>
     </div>

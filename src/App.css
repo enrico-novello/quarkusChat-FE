@@ -3,3 +3,37 @@
   margin: 0;
   padding: 0;
 }
+.auth-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  color: #00ff00;
+}
+
+.login-btn, .logout-btn {
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid #00ff00;
+  color: #00ff00;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+}
+
+.login-btn:hover, .logout-btn:hover {
+  background: #00ff00;
+  color: #000;
+}
+
+.login-prompt {
+  text-align: center;
+  padding: 40px;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+}

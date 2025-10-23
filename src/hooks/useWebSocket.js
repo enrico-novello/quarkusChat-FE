@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
-export const useWebSocket = (url, onMessage, onError) => {
+export const useWebSocket = (url, onMessage, onError, getToken) => {
   const [isConnected, setIsConnected] = useState(false);
   const [lastError, setLastError] = useState(null);
   const ws = useRef(null);
@@ -12,7 +12,18 @@ export const useWebSocket = (url, onMessage, onError) => {
         return;
       }
 
-      ws.current = new WebSocket(url);
+      let finalUrl = url;
+      const token = getToken?.();
+      
+      if (token) {
+        // 👇 AGGIUNGI IL TOKEN COME QUERY PARAMETER
+        finalUrl = `${url}?token=${encodeURIComponent(token)}`;
+        console.log('🔐 WebSocket connecting with JWT token as query parameter');
+      } else {
+        console.warn('⚠️ No token available for WebSocket connection');
+      }
+
+      ws.current = new WebSocket(finalUrl);
       
       ws.current.onopen = () => {
         setIsConnected(true);
@@ -32,11 +43,16 @@ export const useWebSocket = (url, onMessage, onError) => {
 
       ws.current.onclose = (event) => {
         setIsConnected(false);
-        console.log('🔴 WebSocket disconnected');
+        console.log('🔴 WebSocket disconnected', {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean
+        });
         
-        // Auto-reconnect dopo 3 secondi
-        if (event.code !== 1000) {
+        // Auto-reconnect solo se non è un errore di autenticazione
+        if (event.code !== 1008 && event.code !== 4003) { // 1008 = Policy Violation, 4003 = Custom auth error
           reconnectTimeout.current = setTimeout(() => {
+            console.log('🔄 Attempting WebSocket reconnection...');
             connect();
           }, 3000);
         }
@@ -53,7 +69,7 @@ export const useWebSocket = (url, onMessage, onError) => {
       setLastError('Failed to establish connection');
       onError?.('Connection failed');
     }
-  }, [url, onMessage, onError]);
+  }, [url, onMessage, onError, getToken]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeout.current) {

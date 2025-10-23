@@ -1,108 +1,239 @@
-import { useState, useCallback, useRef } from 'react';
+// useChat.js - Versione enterprise-ready
+import { useState, useCallback, useRef, useMemo } from 'react';
 
-export const useChat = () => {
+export const useChat = (token) => {
   const [messages, setMessages] = useState([]);
   const [typingUsers, setTypingUsers] = useState(new Set());
-  const [user, setUser] = useState({ username: 'testuser', userId: 1 });
   const [roomId, setRoomId] = useState(1);
   
   const typingTimeouts = useRef(new Map());
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 3;
+
+  const user = {
+    username: 'authenticated-user',
+    userId: 'user-from-token', 
+    email: 'user@example.com',
+    isAuthenticated: !!token
+  };
 
   const addMessage = useCallback((message) => {
-    setMessages(prev => [...prev, { 
-      ...message, 
-      id: Date.now() + Math.random() 
-    }]);
+    const messageWithId = {
+      ...message,
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: message.timestamp || new Date().toISOString()
+    };
+    
+    setMessages(prev => {
+      const newMessages = [...prev, messageWithId];
+      return newMessages.slice(-1000);
+    });
   }, []);
 
   const handleWebSocketMessage = useCallback((data) => {
-    switch (data.type) {
-      case 'message':
-        addMessage({
-          type: 'user',
-          sender: data.data.user?.username || 'Unknown',
-          content: data.data.content,
-          timestamp: data.data.sentAt,
-          user: data.data.user
-        });
-        break;
-
-      case 'system':
-        addMessage({
-          type: 'system',
-          sender: 'System',
-          content: data.data.message,
-          timestamp: data.timestamp
-        });
-        break;
-
-      case 'typing':
-        if (data.data.isTyping) {
-          setTypingUsers(prev => new Set([...prev, data.data.username]));
-          
-          // Auto-rimuovi dopo 3 secondi
-          if (typingTimeouts.current.has(data.data.username)) {
-            clearTimeout(typingTimeouts.current.get(data.data.username));
-          }
-          
-          const timeout = setTimeout(() => {
-            setTypingUsers(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(data.data.username);
-              return newSet;
-            });
-          }, 3000);
-          
-          typingTimeouts.current.set(data.data.username, timeout);
-        } else {
-          setTypingUsers(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(data.data.username);
-            return newSet;
+    console.log('📨 WebSocket message received:', data);
+    
+    try {
+      switch (data.type) {
+        case 'message':
+          addMessage({
+            type: 'user',
+            sender: data.data.username || data.data.user?.username || 'Unknown',
+            content: data.data.content,
+            timestamp: data.data.timestamp || data.data.sentAt,
+            user: data.data.user || { username: data.data.username }
           });
-        }
-        break;
+          break;
 
-      case 'error':
-        addMessage({
-          type: 'error',
-          sender: 'Error',
-          content: data.data.message
-        });
-        break;
+        case 'system':
+          addMessage({
+            type: 'system',
+            sender: 'System',
+            content: data.data.message,
+            timestamp: data.data.timestamp || new Date().toISOString()
+          });
+          break;
 
-      default:
-        console.warn('Unknown message type:', data.type);
+        case 'typing':
+          handleTypingNotification(data.data);
+          break;
+
+        case 'error':
+          addMessage({
+            type: 'error',
+            sender: 'Error',
+            content: data.data.message,
+            timestamp: new Date().toISOString()
+          });
+          
+          // 👇 SE È UN ERRORE DI AUTENTICAZIONE, NON RICONNETTERE
+          if (data.data.message.includes('Authentication') || data.data.message.includes('auth')) {
+            console.error('🔒 Authentication error - stopping reconnection attempts');
+            reconnectAttempts.current = maxReconnectAttempts;
+          }
+          break;
+
+        default:
+          console.warn('Unknown message type:', data.type, data);
+      }
+    } catch (error) {
+      console.error('Error processing WebSocket message:', error);
+      addMessage({
+        type: 'error',
+        sender: 'System',
+        content: 'Error processing message',
+        timestamp: new Date().toISOString()
+      });
     }
   }, [addMessage]);
 
-  const sendChatMessage = useCallback((content, websocket) => {
-    if (!content.trim()) return false;
+  const handleTypingNotification = useCallback((typingData) => {
+    const { username, isTyping } = typingData;
+    
+    if (!username) {
+      console.warn('Typing notification missing username');
+      return;
+    }
 
-    const success = websocket.sendMessage({
-      type: 'message',
-      userId: user.userId,
-      username: user.username,
-      content: content.trim()
-    });
-
-    return success;
-  }, [user]);
-
-  const sendTypingIndicator = useCallback((isTyping, websocket) => {
-    return websocket.sendMessage({
-      type: 'typing',
-      username: user.username,
-      isTyping: isTyping
-    });
-  }, [user]);
-
-  const updateUser = useCallback((newUser) => {
-    setUser(prev => ({ ...prev, ...newUser }));
+    if (isTyping) {
+      setTypingUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.add(username);
+        return newSet;
+      });
+      
+      // Auto-remove after 3 seconds
+      if (typingTimeouts.current.has(username)) {
+        clearTimeout(typingTimeouts.current.get(username));
+      }
+      
+      const timeout = setTimeout(() => {
+        setTypingUsers(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(username);
+          return newSet;
+        });
+        typingTimeouts.current.delete(username);
+      }, 3000);
+      
+      typingTimeouts.current.set(username, timeout);
+    } else {
+      setTypingUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(username);
+        return newSet;
+      });
+      
+      if (typingTimeouts.current.has(username)) {
+        clearTimeout(typingTimeouts.current.get(username));
+        typingTimeouts.current.delete(username);
+      }
+    }
   }, []);
 
+  const sendChatMessage = useCallback((content, websocket) => {
+    if (!content || !content.trim()) {
+      console.warn('⚠️ Attempted to send empty message');
+      return false;
+    }
+
+    if (!user.isAuthenticated) {
+      console.error('❌ Cannot send message: User not authenticated');
+      addMessage({
+        type: 'error',
+        sender: 'System',
+        content: 'You must be logged in to send messages',
+        timestamp: new Date().toISOString()
+      });
+      return false;
+    }
+
+    if (!websocket || !websocket.isConnected?.()) {
+      console.error('❌ WebSocket not connected');
+      addMessage({
+        type: 'error',
+        sender: 'System',
+        content: 'Connection lost. Please refresh the page.',
+        timestamp: new Date().toISOString()
+      });
+      return false;
+    }
+
+    console.log('💬 Sending chat message:', content.substring(0, 50) + '...');
+    
+    try {
+      const success = websocket.sendMessage({
+        type: 'message',
+        content: content.trim(),
+        timestamp: new Date().toISOString()
+      });
+
+      if (success) {
+        // Aggiungi il messaggio localmente per feedback immediato
+        addMessage({
+          type: 'user',
+          sender: user.username,
+          content: content.trim(),
+          timestamp: new Date().toISOString(),
+          user: { username: user.username },
+          isLocal: true
+        });
+      }
+
+      return success;
+    } catch (error) {
+      console.error('Error sending message:', error);
+      return false;
+    }
+  }, [user, addMessage]);
+
+  const sendTypingIndicator = useCallback((isTyping, websocket) => {
+    if (!user.isAuthenticated) {
+      return false;
+    }
+
+    if (!websocket || !websocket.isConnected?.()) {
+      return false;
+    }
+
+    console.log('⌨️ Sending typing indicator:', isTyping);
+    
+    try {
+      return websocket.sendMessage({
+        type: 'typing',
+        isTyping: isTyping,
+        username: user.username
+      });
+    } catch (error) {
+      console.error('Error sending typing indicator:', error);
+      return false;
+    }
+  }, [user]);
+
   const updateRoomId = useCallback((newRoomId) => {
+    if (newRoomId < 1) {
+      console.warn('Invalid room ID:', newRoomId);
+      return;
+    }
+    
+    console.log(`🔄 Changing room from ${roomId} to ${newRoomId}`);
     setRoomId(newRoomId);
+    setMessages([]);
+    setTypingUsers(new Set());
+    
+    // Cleanup all timeouts
+    typingTimeouts.current.forEach(timeout => clearTimeout(timeout));
+    typingTimeouts.current.clear();
+  }, [roomId]);
+
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+  }, []);
+
+   const cleanup = useCallback(() => {
+    typingTimeouts.current.forEach(timeout => clearTimeout(timeout));
+    typingTimeouts.current.clear();
+    reconnectAttempts.current = 0;
   }, []);
 
   return {
@@ -113,7 +244,9 @@ export const useChat = () => {
     handleWebSocketMessage,
     sendChatMessage,
     sendTypingIndicator,
-    updateUser,
-    updateRoomId
+    updateRoomId,
+    clearMessages,
+    cleanup,
+    isAuthenticated: user.isAuthenticated
   };
 };
